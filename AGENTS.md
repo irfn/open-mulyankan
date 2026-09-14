@@ -16,7 +16,8 @@ ls providers db contracts tests/conformance platform.yaml docs/canonicalization.
 ```
 
 Every one of those is absent today. If a task needs one, create it explicitly
-and say so — don't code as if it were already there.
+and say so — don't code as if it were already there. `deploy/dev/` does exist
+(the local observability stack, `docs/observability.md` §6).
 `docs/provider-contracts.md` claims M0 ships a `kms` reference provider; only
 the interface and conformance suite exist.
 
@@ -57,9 +58,8 @@ No such file is committed; with none, the app starts with zero bindings.
 used here: this repository is public and `sarvamai/security-redirect` is
 private, and GitHub does not let a public repository call a reusable workflow
 that lives in a private one. `ci.yml` carries the call, commented out, and
-says what restoring it needs. `build-and-test` is
-still the template's `echo` placeholder, so the Python tests are local-only —
-a green PR proves nothing about them. `Dockerfile` is likewise a placeholder.
+says what restoring it needs. `build-and-test` runs the Python test suite on
+3.12. `Dockerfile` is likewise a placeholder.
 `ruff` is unconfigured and unpinned (`>=0.6`); it reports findings in
 pre-existing `platform/` code, so check `git stash`-clean output before
 blaming your change.

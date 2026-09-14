@@ -393,7 +393,7 @@ Deployments differ only in these values.
 | `OTEL_PROPAGATORS` | `tracecontext` | D8 |
 | `OTEL_TRACES_SAMPLER` | `parentbased_always_on` | Production: `parentbased_traceidratio` with `OTEL_TRACES_SAMPLER_ARG`; tail sampling belongs in the Collector |
 | `OTEL_SEMCONV_STABILITY_OPT_IN` | `http` | Stable HTTP conventions and the `http.server.request.duration` metric |
-| `OTEL_PYTHON_FASTAPI_EXCLUDED_URLS` | `healthz` | D9 |
+| `OTEL_PYTHON_FASTAPI_EXCLUDED_URLS` | `^https?://[^/]+/healthz$` | D9. Anchored: the instrumentation runs an unanchored search over scheme://host/path, so a bare `healthz` would also drop any request whose host or path contains the word |
 | `OTEL_SDK_DISABLED` | unset | `true` turns everything off; tests assert the app still serves |
 | `OTEL_LOG_LEVEL` | `info` | SDK's own diagnostics |
 
@@ -425,19 +425,28 @@ is used only as an OTLP receiver.
 
 - `compose.yaml`: `otel-collector` (`otel/opentelemetry-collector-contrib`,
   digest-pinned, OTLP on 4317 and 4318) and `lgtm` (`grafana/otel-lgtm`,
-  digest-pinned, Grafana on 3000). The two applications run on the host
+  digest-pinned, Grafana on 3001 because 3000 is the Next.js dev server).
+  The two applications run on the host
   with their usual dev commands and point at `localhost:4318`, which keeps
   hot reload and avoids a second container image per runtime. Only the
   Collector's OTLP ports and Grafana are published to the host.
 - `otel-collector.yaml`: `otlp` receiver (HTTP and gRPC); processors
-  `memory_limiter`, `batch`, `resourcedetection` (env, system),
+  `memory_limiter`, `batch`,
   `redaction` on the traces, metrics and logs pipelines as defence in depth
-  with the union of the §4.2 allowlists and `summary: debug` so a
-  Collector-side drop is itself observable, and
-  `filter` to drop the health-check route if D9 changes; exporters `otlphttp`
-  to `lgtm:4318`; `health_check` and the Collector's own telemetry enabled.
+  with the union of the §4.2 allowlists, the resource descriptor keys in
+  `ignored_keys` (the processor would otherwise strip `service.name`), and
+  `summary: debug` so a Collector-side drop is itself observable; exporter
+  `otlp_http` to `lgtm:4318`; `health_check` and the Collector's own
+  telemetry enabled. `resourcedetection` (env, system) and a `filter` for
+  the health-check route arrive when a deployment needs them (§6.3).
 - `.env.example`: the §5 variables. The Collector's OTLP receiver has no
   CORS block: browser traffic arrives through the web app's relay (§4.9).
+- `grafana/dashboards.yaml` and `grafana/dashboards/*.json`: three
+  development dashboards provisioned into the local Grafana (service
+  overview, the content-free guard's dropped attributes, process runtime).
+  They are keyed on `service.name` and on the §3.2 and semantic-convention
+  metric names only, never on a URL or any content-bearing attribute, and a
+  test keeps them valid and pointed at the stack's own datasources.
 - A `README.md` stating that Grafana is a local development tool, not a
   dependency of the project, and that no dashboard or alert committed here
   may be required for the system to function.
@@ -528,7 +537,9 @@ auditor reads; keep the allowlist in one place with a comment per entry.
   scaffold exists (`apps/client/`, ADR-0010) but serves no role until
   `contracts/` is authored; it will follow §4.8 with its own service name,
   and its Rust shell reports through the same Collector.
-- Tail sampling, alert rules and dashboards committed to the repository;
+- Tail sampling, alert rules and production dashboards committed to the
+  repository (the development dashboards under `deploy/dev/grafana` are a
+  local convenience, §6.2, and prove nothing about a production backend);
   a dashboard is useful locally but must never become a dependency.
 - Profiling (OTel profiles signal) once the SDKs are stable.
 - Session replay of any kind. It is not deferred but excluded: a replay is
