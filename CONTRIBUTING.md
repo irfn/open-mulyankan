@@ -66,7 +66,7 @@ Every PR is gated on the `ci` context, which aggregates:
   JS/TS/React rulepacks.
 - **`gitleaks`** — secret detection across the whole git history.
 - **`trivy`** — dependency CVEs, secrets and misconfiguration.
-- **`web`** — lint, types, build. **`build-and-test`** — the Python test suite.
+- **`web`** / **`build-and-test`** — lint, types, build.
 
 None of these needs a credential. The one job that does is the `/review` reviewer
 above, which reads the repository secret `SARVAM_API_KEY`. It is not part of `ci`, so

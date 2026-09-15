@@ -36,17 +36,18 @@ processors:
       - telemetry.distro.name
       - telemetry.distro.version
     # One processor for all three pipelines: the union of the span, log and
-    # metric allowlists in platform/core/.../guard.py and
-    # apps/web/.../allowlist.ts. Keep it identical to them.
+    # metric allowlists in platform/core/.../guard.py, which a test pins.
     allowed_keys:
+      # The union of the three Python allowlists (guard.py), nothing more.
+      # The web tier's keys (url.path, a query-stripped url.full, next.*,
+      # the RUM keys) are added in the PR that lands apps/web's allowlist,
+      # so this list never admits a key nothing in the tree emits.
       - http.request.method
       - http.route
       - http.response.status_code
       - http.request.body.size
       - http.response.body.size
       - url.scheme
-      - url.path
-      - url.full
       - server.address
       - server.port
       - network.protocol.version
@@ -55,7 +56,6 @@ processors:
       - exception.type
       - exception.stacktrace
       - enduser.pseudo.id
-      - session.id
       - mulyankan.spi
       - mulyankan.provider.name
       - mulyankan.provider.version
@@ -67,27 +67,11 @@ processors:
       - db.system.name
       - db.operation.name
       - db.collection.name
+      # log records
       - code.function.name
       - code.file.path
       - code.line.number
-      - http.method
-      - http.status_code
-      - http.url
-      - next.span_name
-      - next.span_type
-      - next.route
-      - next.page
-      - next.rsc
-      - next.segment
-      - net.peer.name
-      - net.peer.port
-      - browser.mobile
-      - navigation.type
-      - event_type
-      - target_element
-      - target_xpath
-      - mulyankan.web.vital.rating
-      # Metric data-point keys (ALLOWED_METRIC_ATTRIBUTES on each tier)
+      # metric data points (ALLOWED_METRIC_ATTRIBUTES)
       - signal
       - attribute
       - action
@@ -98,10 +82,6 @@ processors:
       - to_state
       - type
       - generation
-      - nodejs.eventloop.state
-      - v8js.gc.type
-      - v8js.heap.space.name
-      - v8js.resource.type
     summary: debug
 
 exporters:

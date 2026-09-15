@@ -84,9 +84,8 @@ def test_asr02obs_request_duration_metric_is_recorded(telemetry) -> None:
         "http.response.status_code",
         "url.scheme",
         "network.protocol.version",
-        "server.address",
-        "server.port",
     }
+    assert "server.address" not in point.attributes  # Host header: unbounded
     assert _metric_points(telemetry, "process.cpu.time")
 
 

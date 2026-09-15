@@ -200,22 +200,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.12'
+      # Replace the steps below with your project's real build/test commands.
+      - name: Build
+        run: echo "build steps go here"
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-
-      # Editable installs of both packages, exactly as AGENTS.md documents for
-      # local work. There is no Python lockfile yet; when one lands, switch to
-      # `uv sync --frozen`.
-      - name: Install Python packages
-        run: uv pip install --system -e platform/spi -e "platform/core[dev]"
-
-      - name: Run Python tests
-        run: python -m pytest platform/spi platform/core -q
+      - name: Test
+        run: echo "test steps go here"
 
   web:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false

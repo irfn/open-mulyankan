@@ -76,13 +76,15 @@ apps/web/AGENTS.md                                         modify (4, 5)
 
 ### Task 1: Replace the `build-and-test` placeholder
 
+Landing separately through upstream PR #96 (pip rather than uv; same job, same tests). The observability slices assume it is merged.
+
 **Files:**
 - Modify: `.github/workflows/ci.yml:193-208`
 
 **Interfaces:**
 - Produces: a CI job named `build-and-test` that fails when `python -m pytest platform/spi platform/core -q` fails. The `ci` aggregate job already depends on it.
 
-- [x] **Step 1: Confirm the tests pass locally before touching CI**
+- [ ] **Step 1: Confirm the tests pass locally before touching CI**
 
 Run:
 ```bash
@@ -91,7 +93,7 @@ python -m pytest platform/spi platform/core -q
 ```
 Expected: all tests pass (M0 has 12).
 
-- [x] **Step 2: Replace the placeholder steps**
+- [ ] **Step 2: Replace the placeholder steps**
 
 Replace the `Build` and `Test` steps (the two `echo` lines and their comment) with:
 
@@ -118,7 +120,7 @@ Replace the `Build` and `Test` steps (the two `echo` lines and their comment) wi
 
 Temporarily add `assert False` to `platform/core/tests/test_healthz.py`, push to the branch, confirm the `build-and-test` check is red and the `ci` check is red. Revert the assert, push, confirm green. This is the only way to prove the gate gates.
 
-- [x] **Step 4: Update the docs that call CI a placeholder**
+- [ ] **Step 4: Update the docs that call CI a placeholder**
 
 In `AGENTS.md` (root), in the paragraph beginning "**CI's gate is the aggregate `ci` job**", replace the two sentences from "`build-and-test` is still the template's `echo` placeholder" to "a green PR proves nothing about them." with:
 
@@ -176,7 +178,6 @@ dependencies = [
     "opentelemetry-sdk>=1.44,<2",
     "opentelemetry-exporter-otlp-proto-http>=1.44,<2",
     "opentelemetry-instrumentation-fastapi>=0.65b0,<1",
-    "opentelemetry-instrumentation-logging>=0.65b0,<1",
     "opentelemetry-instrumentation-system-metrics>=0.65b0,<1",
 ]
 ```
@@ -314,9 +315,8 @@ git commit -s -m "Add the observability package skeleton and OTel dependencies"
 ```python
 """Attribute allowlist guard (ASR02-OBS): unknown keys never reach an exporter."""
 
-import logging
 
-from opentelemetry.instrumentation.logging.handler import LoggingHandler
+from opentelemetry._logs import LogRecord, SeverityNumber
 from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
@@ -409,11 +409,16 @@ def test_asr02obs_unknown_log_attributes_are_dropped_and_counted() -> None:
     provider = LoggerProvider()
     provider.add_log_record_processor(LogAttributeGuard(counter))
     provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
-    logger = logging.getLogger("guard-test")
-    logger.addHandler(LoggingHandler(logger_provider=provider))
-    logger.setLevel(logging.INFO)
 
-    logger.info("draft.submitted", extra={"mulyankan.object_ref": "art-1", "stem": SENTINEL})
+    # Through the logs API: the stdlib handler that maps `extra` to attributes
+    # arrives with the structured-logs task, and the guard sits below it.
+    provider.get_logger("guard-test").emit(
+        LogRecord(
+            body="draft.submitted",
+            severity_number=SeverityNumber.INFO,
+            attributes={"mulyankan.object_ref": "art-1", "stem": SENTINEL},
+        )
+    )
 
     (record,) = exporter.get_finished_logs()
     attributes = dict(record.log_record.attributes)
@@ -918,6 +923,12 @@ git commit -s -m "Record audit metrics and link spans to audit event ids"
 ```
 
 ### Task 5: Structured logs
+
+This task adds `opentelemetry-instrumentation-logging` to `platform/core`'s
+dependencies (its `LoggingHandler` maps `extra` to attributes) and owns the
+log **body** question the attribute guard does not: the sentinel test gains a
+log call whose message interpolates the sentinel, and the handler or the
+formatter must keep the exported body a static event name.
 
 **Files:**
 - Create: `platform/core/src/mulyankan_platform/observability/logs.py`
@@ -1852,7 +1863,8 @@ git commit -s -m "Document the observability package and its tests"
 # Local observability backend. Grafana's all-in-one image is a development
 # convenience (D1): a separate, unmodified AGPL service per ADR-0002, never a
 # dependency of the system. The applications run on the host and export to
-# the Collector; only the Collector's OTLP ports and Grafana are published.
+# the Collector; only the Collector's OTLP ports and Grafana are published,
+# and only on loopback: the receiver and Grafana (admin / admin) are unauthenticated.
 services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.160.0@sha256:799dc6cf12c96192af37b5bdba804da8c10b3bc563b43cb90c3f3c58d9572ad6
@@ -1860,16 +1872,16 @@ services:
     volumes:
       - ./otel-collector.yaml:/etc/otelcol/config.yaml:ro
     ports:
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
-      - "13133:13133" # health_check extension
+      - "127.0.0.1:4317:4317"   # OTLP gRPC
+      - "127.0.0.1:4318:4318"   # OTLP HTTP
+      - "127.0.0.1:13133:13133" # health_check extension
     depends_on:
       - lgtm
 
   lgtm:
     image: grafana/otel-lgtm:0.32.1@sha256:7fd8eaad6bb64897ad5f644c8e15ee67c3204c97168f4bdba122adbf8f60e3c4
     ports:
-      - "3001:3000"   # Grafana (admin / admin); 3000 is the Next.js dev server
+      - "127.0.0.1:3001:3000"   # Grafana (admin / admin); 3000 is the Next.js dev server
     volumes:
       - lgtm-data:/data
       # Development dashboards (spec §6.2). Grafana reads the provider file
@@ -1924,17 +1936,18 @@ processors:
       - telemetry.distro.name
       - telemetry.distro.version
     # One processor for all three pipelines: the union of the span, log and
-    # metric allowlists in platform/core/.../guard.py and
-    # apps/web/.../allowlist.ts. Keep it identical to them.
+    # metric allowlists in platform/core/.../guard.py, which a test pins.
     allowed_keys:
+      # The union of the three Python allowlists (guard.py), nothing more.
+      # The web tier's keys (url.path, a query-stripped url.full, next.*,
+      # the RUM keys) are added in the PR that lands apps/web's allowlist,
+      # so this list never admits a key nothing in the tree emits.
       - http.request.method
       - http.route
       - http.response.status_code
       - http.request.body.size
       - http.response.body.size
       - url.scheme
-      - url.path
-      - url.full
       - server.address
       - server.port
       - network.protocol.version
@@ -1943,7 +1956,6 @@ processors:
       - exception.type
       - exception.stacktrace
       - enduser.pseudo.id
-      - session.id
       - mulyankan.spi
       - mulyankan.provider.name
       - mulyankan.provider.version
@@ -1955,27 +1967,11 @@ processors:
       - db.system.name
       - db.operation.name
       - db.collection.name
+      # log records
       - code.function.name
       - code.file.path
       - code.line.number
-      - http.method
-      - http.status_code
-      - http.url
-      - next.span_name
-      - next.span_type
-      - next.route
-      - next.page
-      - next.rsc
-      - next.segment
-      - net.peer.name
-      - net.peer.port
-      - browser.mobile
-      - navigation.type
-      - event_type
-      - target_element
-      - target_xpath
-      - mulyankan.web.vital.rating
-      # Metric data-point keys (ALLOWED_METRIC_ATTRIBUTES on each tier)
+      # metric data points (ALLOWED_METRIC_ATTRIBUTES)
       - signal
       - attribute
       - action
@@ -1986,10 +1982,6 @@ processors:
       - to_state
       - type
       - generation
-      - nodejs.eventloop.state
-      - v8js.gc.type
-      - v8js.heap.space.name
-      - v8js.resource.type
     summary: debug
 
 exporters:

@@ -158,9 +158,13 @@ that starts emitting a new attribute shows up in a metric.
 
 Metrics get the same treatment by a different mechanism: an SDK `View`
 matching every instrument, with `attribute_keys` (Python) or
-`attributeKeys` (Node and browser) set to the metric allowlist, which is
-the span list plus the instrument-specific keys in §3.2 and the fixed
-enumerations of the runtime instrumentations. The SDK drops unlisted keys at
+`attributeKeys` (Node and browser) set to the metric allowlist. That list
+is spelled out on its own, not derived from the span list: every key on it
+must be a bounded set, because a metric label is a series. So it holds the
+HTTP keys except `server.address` and `server.port` (the Host header, which
+a client controls), the instrument-specific keys in §3.2, and the fixed
+enumerations of the runtime instrumentations; `exception.stacktrace`,
+`client.address` and the identifiers stay span-only. The SDK drops unlisted keys at
 aggregation time, before any reader sees them. A View drops silently, so
 metric drops are not counted; the §7 sentinel test, which inspects metric
 data-point attributes, is the check. The Collector's `redaction` processor

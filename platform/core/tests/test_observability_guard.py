@@ -1,12 +1,6 @@
 """Attribute allowlist guard (ASR02-OBS): unknown keys never reach an exporter."""
 
-import logging
-from pathlib import Path
-
-import yaml
-
 from mulyankan_platform.observability.guard import (
-    ALLOWED_LOG_ATTRIBUTES,
     ALLOWED_METRIC_ATTRIBUTES,
     DROPPED_LABEL_LIMIT,
     ALLOWED_SPAN_ATTRIBUTES,
@@ -15,7 +9,7 @@ from mulyankan_platform.observability.guard import (
     frames_only,
     metric_views,
 )
-from opentelemetry.instrumentation.logging.handler import LoggingHandler
+from opentelemetry._logs import LogRecord, SeverityNumber
 from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import (
     InMemoryLogRecordExporter,
@@ -105,12 +99,15 @@ def test_asr02obs_unknown_log_attributes_are_dropped_and_counted() -> None:
     provider = LoggerProvider()
     provider.add_log_record_processor(LogAttributeGuard(counter))
     provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
-    logger = logging.getLogger("guard-test")
-    logger.addHandler(LoggingHandler(logger_provider=provider))
-    logger.setLevel(logging.INFO)
 
-    logger.info(
-        "draft.submitted", extra={"mulyankan.object_ref": "art-1", "stem": SENTINEL}
+    # Through the logs API: the stdlib handler that maps `extra` to attributes
+    # arrives with the structured-logs task, and the guard sits below it.
+    provider.get_logger("guard-test").emit(
+        LogRecord(
+            body="draft.submitted",
+            severity_number=SeverityNumber.INFO,
+            attributes={"mulyankan.object_ref": "art-1", "stem": SENTINEL},
+        )
     )
 
     (record,) = exporter.get_finished_logs()
@@ -152,6 +149,7 @@ def test_allowlist_never_admits_the_known_leaky_keys() -> None:
     for key in (
         "exception.stacktrace",
         "client.address",
+        "server.address",  # the Host header
         "enduser.pseudo.id",
         "mulyankan.object_ref",
     ):
@@ -235,32 +233,3 @@ def test_asr02obs_guard_preserves_sdk_limit_drop_counts() -> None:
     (exported,) = exporter.get_finished_spans()
     assert exported.dropped_attributes == 2
     assert exported.dropped_events == 1
-
-
-def test_collector_redaction_covers_the_python_allowlists() -> None:
-    root = Path(__file__).resolve().parents[3]
-    config = yaml.safe_load(
-        (root / "deploy/dev/otel-collector.yaml").read_text(encoding="utf-8")
-    )
-    allowed = set(config["processors"]["redaction"]["allowed_keys"])
-    ignored = set(config["processors"]["redaction"]["ignored_keys"])
-
-    assert (
-        ALLOWED_SPAN_ATTRIBUTES | ALLOWED_LOG_ATTRIBUTES | ALLOWED_METRIC_ATTRIBUTES
-        <= allowed
-    )
-    for key in (
-        "url.query",
-        "user_agent.original",
-        "exception.message",
-        "enduser.id",
-        "db.query.text",
-    ):
-        assert key not in allowed
-    assert {
-        "service.name",
-        "service.namespace",
-        "deployment.environment.name",
-    } <= ignored
-    for name in ("traces", "metrics", "logs"):
-        assert "redaction" in config["service"]["pipelines"][name]["processors"]

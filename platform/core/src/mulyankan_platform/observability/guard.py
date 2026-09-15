@@ -15,7 +15,9 @@ lines before export (`frames_only`). Metric attributes go through an SDK
 metric drops are not counted and the §7 sentinel test is the check.
 
 This list is what an auditor reads: one entry per line, with the reason.
-Keep it identical to `apps/web/src/observability/allowlist.ts`.
+The Collector's redaction list mirrors the union of the three sets below
+(`tests/test_dev_stack.py` pins that), and the web tier's allowlist will
+mirror it when that slice lands.
 """
 
 from __future__ import annotations
@@ -83,8 +85,8 @@ ALLOWED_METRIC_ATTRIBUTES: frozenset[str] = frozenset(
         "http.response.status_code",
         "url.scheme",
         "network.protocol.version",
-        "server.address",
-        "server.port",
+        # server.address and server.port stay off metrics: the address is the
+        # request's Host header, so a client would control the series count.
         "error.type",  # status class or exception class name
         # mulyankan.observability.attributes_dropped
         "signal",
